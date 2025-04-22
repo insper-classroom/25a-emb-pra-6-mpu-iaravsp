@@ -2,10 +2,8 @@
 #include <task.h>
 #include <semphr.h>
 #include <queue.h>
-
 #include "pico/stdlib.h"
 #include <stdio.h>
-
 #include "hardware/uart.h"
 #include "hardware/gpio.h"
 #include "hardware/i2c.h"
@@ -23,7 +21,8 @@ typedef struct coord
 {
     int axis;
     int val;
-} coord; 
+} coord;
+
 static void mpu6050_reset()
 {
     // Two byte reset. First byte register, second byte data
@@ -86,16 +85,10 @@ void mpu6050_task(void *p)
     mpu6050_reset();
     int16_t acceleration[3], gyro[3], temp;
 
-    float fator_x = 0.2;
-    float fator_y = 0.2;
 
     while (1)
     {
-        // leitura da MPU, sem fusao de dados
         mpu6050_read_raw(acceleration, gyro, &temp);
-        // printf("Acc. X = %d, Y = %d, Z = %d\n", acceleration[0], acceleration[1], acceleration[2]);
-        // printf("Gyro. X = %d, Y = %d, Z = %d\n", gyro[0], gyro[1], gyro[2]);
-        // printf("Temp. = %f\n", (temp / 340.0) + 36.53);
 
         FusionVector gyroscope = {
             .axis.x = gyro[0] / 131.0f, // Conversão para graus/s
@@ -113,21 +106,30 @@ void mpu6050_task(void *p)
 
         const FusionEuler euler = FusionQuaternionToEuler(FusionAhrsGetQuaternion(&ahrs));
 
-        // printf("Roll %0.1f, Pitch %0.1f, Yaw %0.1f\n", euler.angle.roll, euler.angle.pitch, euler.angle.yaw\n);
-
         coord x;
         x.axis = 0;
-        x.val = (int) euler.angle.roll *  fator_x;
-        printf("X value: %d\n", x.val);
+        x.val = euler.angle.roll;
 
         coord y;
-        y.axis =1;
-        y.val = (int) euler.angle.pitch * fator_y;
-        printf("Y value: %d\n", y.val);
+        y.axis = 1;
+        y.val = euler.angle.pitch;
+
+        printf("tudo certo ate aqui");
+        float aceler_x_g = accelerometer.axis.x ;
+        printf("aceleracao em g =>  %d\n", (int) aceler_x_g);
+        if (aceler_x_g * 100 > 110)
+        {
+            printf("entrouuu");
+            coord ace;
+            ace.axis = 2;
+            ace.val = 1;
+            xQueueSend(xQueuePos, &ace, 0);
+        }
 
         xQueueSend(xQueuePos, &x, 0);
         xQueueSend(xQueuePos, &y, 0);
-        vTaskDelay(pdMS_TO_TICKS(10));
+
+        vTaskDelay(pdMS_TO_TICKS(15));
     }
 }
 
@@ -143,7 +145,7 @@ void uart_task(void *p)
     {
         if (xQueueReceive(xQueuePos, &recebido, portMAX_DELAY))
         {
-            printf("Sending axis %d val %d\n", recebido.axis, recebido.val);
+            // printf("Enviando para o Python: eixo = %d, valor = %d\n", recebido.axis, recebido.val);
             uint8_t vec[4];
             vec[0] = 0xFF; // byte de sincronização QUE O PYTHON TA ESPERANDO rpa começar a ler os dados
             vec[1] = (uint8_t)recebido.axis;
@@ -157,8 +159,9 @@ void uart_task(void *p)
 int main()
 {
     stdio_init_all();
-    
-    xQueuePos = xQueueCreate(32, sizeof(coord));
+
+    xQueuePos = xQueueCreate(30, sizeof(coord));
+
     xTaskCreate(mpu6050_task, "mpu6050_Task 1", 8192, NULL, 1, NULL);
     xTaskCreate(uart_task, "uart task", 8192, NULL, 1, NULL);
     vTaskStartScheduler();

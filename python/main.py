@@ -14,6 +14,8 @@ def move_mouse(axis, value):
         pyautogui.moveRel(value, 0)
     elif axis == 1:
         pyautogui.moveRel(0, value)
+    elif axis == 2:
+        pyautogui.click()
 
 def controle(ser):
     """
@@ -21,12 +23,10 @@ def controle(ser):
     Aguarda o byte 0xFF e então lê 3 bytes: axis (1 byte) + valor (2 bytes).
     """
     while True:
-        # Aguardar byte de sincronização
         sync_byte = ser.read(size=1)
         if not sync_byte:
             continue
         if sync_byte[0] == 0xFF:
-            # Ler 3 bytes (axis + valor(2b))
             data = ser.read(size=3)
             if len(data) < 3:
                 continue
